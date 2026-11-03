@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Kids</h2>
+{% if not rows %}
+<p>No kids yet. Add one below.</p>
+{% endif %}
+{% for row in rows %}
+<div class="card">
+  <a href="{{ url_for('kid_detail', kid_id=row.kid.id) }}"><strong>{{ row.kid.name }}</strong></a>
+  <div class="big">{{ format_cents(row.balance) }}</div>
+  {% if row.goal %}
+  <p>Goal: {{ row.goal.name }} — {{ format_cents(row.balance) }} of {{ format_cents(row.goal.price_cents) }} ({{ row.pct }}%)</p>
+  <div class="bar"><div style="width:{{ row.pct }}%"></div></div>
+  {% else %}
+  <p>No active goal.</p>
+  {% endif %}
+</div>
+{% endfor %}
+<div class="card">
+<h3>Add a kid</h3>
+<form method="post" action="{{ url_for('add_kid') }}">
+  <label>Name <input name="name" required></label>
+  <label>TV address (optional, e.g. 192.168.2.50) <input name="tv_ip"></label>
+  <button type="submit">Add kid</button>
+</form>
+</div>
+{% endblock %}

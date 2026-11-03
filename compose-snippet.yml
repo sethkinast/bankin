@@ -1,0 +1,38 @@
+# BanKin — Synology compose snippet (PASTE, do not deploy from here).
+#
+# Seth pastes this service into his live docker-compose.yml (next to the
+# other services) and deploys it himself. The agent does NOT touch the
+# NAS, its SSH, or its Docker. This file is only the snippet.
+#
+# Also add this line to x-base's extra_hosts in xbase.yml, following the
+# house hairpin pattern, so the Caddy domain resolves to host-gateway:
+#   - "bankin.${DOMAIN}:host-gateway"
+#
+# The image is built by .github/workflows/build.yml on every push to
+# master and published to ghcr.io/sethkinast/bankin:latest. Wait for
+# that workflow to finish before pulling on the NAS the first time.
+# (Custom-built images do not get pullio auto-updates; rebuild manually
+# by pushing a new commit, or pull the new image by hand.)
+#
+# Paste under `services:` in the live compose:
+services:
+  bankin:
+    container_name: bankin
+    image: ghcr.io/sethkinast/bankin:latest
+    extends:
+      file: xbase.yml
+      service: x-base
+    labels:
+      caddy: bankin.${DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+    restart: unless-stopped
+    networks:
+      - caddy
+    volumes:
+      # House .env sets DOCKERCONFDIR=/volume1/docker/appdata; the
+      # mail-forwarder service in the live compose uses the literal
+      # path, so this snippet does too, as required by the brief.
+      - /volume1/docker/appdata/bankin:/data
+    environment:
+      - DATA_DIR=/data
+      - PORT=8080

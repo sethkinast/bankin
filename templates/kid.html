@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ kid.name }}</h2>
+<div class="big">{{ format_cents(balance) }}</div>
+<p><a href="{{ url_for('tv_card_route', kid_id=kid.id) }}">TV card (240×240 JPEG)</a></p>
+
+{% if goal %}
+<div class="card">
+  <h3>Saving goal: {{ goal.name }}</h3>
+  {% if goal.picture_path %}<p><img class="goal" src="{{ url_for('goal_picture', goal_id=goal.id) }}" alt="{{ goal.name }}"></p>{% endif %}
+  <p>{{ format_cents(balance) }} of {{ format_cents(goal.price_cents) }} — {{ pct }}%</p>
+  <div class="bar"><div style="width:{{ pct }}%"></div></div>
+  <form method="post" action="{{ url_for('complete_goal', kid_id=kid.id) }}">
+    <button type="submit">Bought it — complete goal (withdraws {{ format_cents(goal.price_cents) }})</button>
+  </form>
+</div>
+{% else %}
+<p>No active goal.</p>
+{% endif %}
+
+<div class="card">
+<h3>{% if goal %}Edit goal{% else %}Set a saving goal (optional){% endif %}</h3>
+<form method="post" action="{{ url_for('save_goal', kid_id=kid.id) }}" enctype="multipart/form-data">
+  <label>Name <input name="goal_name" value="{{ goal.name if goal else '' }}" required></label>
+  <label>Price <input name="goal_price" value="{{ '%.2f' % (goal.price_cents / 100) if goal else '' }}" required></label>
+  <label>Picture <input type="file" name="goal_picture" accept="image/*"></label>
+  <button type="submit">Save goal</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Deposit</h3>
+<form method="post" action="{{ url_for('deposit', kid_id=kid.id) }}">
+  <label>Amount <input name="amount" required></label>
+  <label>Source / giver <input name="source"></label>
+  <label>Note <input name="note"></label>
+  <button type="submit">Deposit</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Withdraw</h3>
+<form method="post" action="{{ url_for('withdraw', kid_id=kid.id) }}">
+  <label>Amount <input name="amount" required></label>
+  <label>Source / reason <input name="source"></label>
+  <label>Note <input name="note"></label>
+  <button type="submit">Withdraw</button>
+</form>
+</div>
+
+<div class="card">
+<h3>TV</h3>
+<form method="post" action="{{ url_for('set_tv_ip', kid_id=kid.id) }}">
+  <label>TV address <input name="tv_ip" value="{{ kid.tv_ip }}"></label>
+  <button type="submit">Save TV address</button>
+</form>
+<form method="post" action="{{ url_for('push_tv', kid_id=kid.id) }}">
+  <button type="submit">Push to TV</button>
+</form>
+<p>Current TV address: {{ kid.tv_ip or 'not set' }}</p>
+</div>
+
+<h3>Ledger</h3>
+{% if not txns %}<p>No transactions yet.</p>{% endif %}
+<table>
+<tr><th>Date</th><th>Type</th><th>Amount</th><th>Source</th><th>Note</th></tr>
+{% for t in txns %}
+<tr><td>{{ t.created_at }}</td><td>{{ t.kind }}</td><td>{{ format_cents(t.amount_cents) if t.kind == 'deposit' else '-' + format_cents(t.amount_cents) }}</td><td>{{ t.source }}</td><td>{{ t.note }}</td></tr>
+{% endfor %}
+</table>
+
+{% if archived %}
+<h3>Completed goals</h3>
+<ul>
+{% for g in archived %}
+<li>{{ g.name }} — {{ format_cents(g.price_cents) }} ({{ g.completed_at }})</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

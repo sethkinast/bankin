@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BanKin — Bank of Kinast</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1a2436}
+h1 a{color:inherit;text-decoration:none}
+.card{border:1px solid #ccc;border-radius:8px;padding:1rem;margin:1rem 0}
+.big{font-size:2rem;font-weight:700}
+.bar{height:20px;border:1px solid #333;border-radius:4px;overflow:hidden}
+.bar>div{height:100%;background:#5ac878}
+.flash-ok{background:#e6f6ea;padding:.5rem;border-radius:4px}
+.flash-warn{background:#fdeecf;padding:.5rem;border-radius:4px}
+label{display:block;margin:.5rem 0}
+input{padding:.4rem;font-size:1rem}
+button{padding:.5rem 1rem;font-size:1rem;cursor:pointer}
+img.goal{max-width:240px;max-height:240px}
+table{border-collapse:collapse;width:100%}
+td,th{border-bottom:1px solid #ddd;padding:.4rem;text-align:left}
+</style>
+</head>
+<body>
+<h1><a href="/">BanKin</a></h1>
+<p><small>Bank of Kinast — LAN-only family ledger. No PIN, no real money.</small></p>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for category, message in messages %}
+<p class="flash-{{ category }}">{{ message }}</p>
+{% endfor %}
+{% endwith %}
+{% block content %}{% endblock %}
+</body>
+</html>
