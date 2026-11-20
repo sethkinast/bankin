@@ -97,6 +97,32 @@ The app listens on port 8080 inside the container (a high port, never
 :80 as a non-root process), and Caddy proxies to it via the labels in
 the snippet.
 
+## Looks round 1 (2026-11-20)
+
+- Home is the BanKin logo, then one card per kid: big avatar (photo
+  upload, initials circle as fallback) and name on the left, balance
+  on the right, goal underneath with a ~25% separator, generous
+  padding. No goal section when a kid has no goal.
+- Each kid picks one of 6 pastel themes (Sky, Mint, Peach, Lilac,
+  Lemon, Rose) — harmonious card background, border, and balance
+  colour. Avatars and themes live in the data volume, never the repo.
+- Add Kid is a small text link at the bottom, not a button.
+- The whole card is tappable: it opens a flyout with Deposit /
+  Withdraw bubbles, recent activity, theme swatches, and avatar
+  upload. A bubble opens a popover to do the action — no separate
+  kid page is needed for deposits/withdrawals. The kid page still
+  exists for the full ledger, goal editing, and TV settings.
+- Secure Parent Authentication: a random two-digit addition /
+  subtraction question gates every deposit and withdrawal. The
+  answer is checked server-side against a one-time token stored in
+  the session; a wrong or missing answer records nothing and a fresh
+  question is issued. Viewing balances, goals, and history is never
+  gated. Goal completion is not gated (it is a kid-page action).
+- CSS stays WebView 109 safe (plain CSS, flex/basic grid; no
+  subgrid, no native nesting, no `:has()`), so it renders on the
+  Skylight. Ledger math, goal rules, TV push, and the compose
+  snippet are unchanged from v1.
+
 ## What is NOT in v1
 
 - No interest, no fees, no real money movement.

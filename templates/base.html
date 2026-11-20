@@ -5,25 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BanKin — Bank of Kinast</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1a2436}
-h1 a{color:inherit;text-decoration:none}
-.card{border:1px solid #ccc;border-radius:8px;padding:1rem;margin:1rem 0}
-.big{font-size:2rem;font-weight:700}
-.bar{height:20px;border:1px solid #333;border-radius:4px;overflow:hidden}
-.bar>div{height:100%;background:#5ac878}
-.flash-ok{background:#e6f6ea;padding:.5rem;border-radius:4px}
-.flash-warn{background:#fdeecf;padding:.5rem;border-radius:4px}
-label{display:block;margin:.5rem 0}
-input{padding:.4rem;font-size:1rem}
-button{padding:.5rem 1rem;font-size:1rem;cursor:pointer}
-img.goal{max-width:240px;max-height:240px}
+/* WebView 109 safe: plain CSS, flex and basic grid only.
+   No subgrid, no native nesting, no :has(). */
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:860px;margin:0 auto;padding:1rem 1rem 3rem;color:#1a2436;background:#f7f5ef;font-size:18px;line-height:1.4}
+.logo{display:flex;align-items:center;gap:.75rem;margin:.5rem 0 1.5rem}
+.logo svg{flex:none}
+.logo-name{font-size:2.4rem;font-weight:800;letter-spacing:.02em;color:#1d4e89}
+.logo-name em{font-style:normal;color:#2f9e5f}
+.logo-sub{font-size:1rem;color:#5a6577}
+h1 a,h2 a{color:inherit;text-decoration:none}
+a{color:#1d4e89}
+.flash-ok{background:#e6f6ea;padding:.75rem 1rem;border-radius:12px;margin:.75rem 0}
+.flash-warn{background:#fdeecf;padding:.75rem 1rem;border-radius:12px;margin:.75rem 0}
+label{display:block;margin:.75rem 0;font-weight:600}
+input,select{padding:.6rem;font-size:1.1rem;border:1px solid #b9c2cf;border-radius:10px;width:100%;box-sizing:border-box;background:#fff}
+button{padding:.7rem 1.2rem;font-size:1.1rem;cursor:pointer;border-radius:999px;border:1px solid #1d4e89;background:#1d4e89;color:#fff}
+button.secondary{background:#fff;color:#1d4e89}
+button.quiet{background:transparent;color:#5a6577;border-color:transparent;font-size:1rem;text-decoration:underline;padding:.4rem .6rem}
+img.goal{max-width:240px;max-height:240px;border-radius:12px}
 table{border-collapse:collapse;width:100%}
-td,th{border-bottom:1px solid #ddd;padding:.4rem;text-align:left}
+td,th{border-bottom:1px solid #ddd;padding:.5rem;text-align:left}
+.card{border:1px solid #ccc;border-radius:8px;padding:1rem;margin:1rem 0;background:#fff}
+.big{font-size:2rem;font-weight:700}
+.bar{height:20px;border:1px solid #333;border-radius:999px;overflow:hidden;background:#fff}
+.bar>div{height:100%;background:#5ac878}
+/* Kid cards (looks round 1) */
+.kid-card{display:flex;flex-direction:column;gap:.25rem;border:3px solid;border-radius:20px;padding:1.25rem 1.5rem;margin:1rem 0;cursor:pointer;text-align:left;width:100%;box-sizing:border-box;background:#fff}
+.kid-top{display:flex;align-items:center;gap:1rem}
+.avatar{width:76px;height:76px;flex:none;border-radius:50%;object-fit:cover;border:3px solid rgba(0,0,0,.15)}
+.avatar-fallback{width:76px;height:76px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;color:#fff;background:#8a94a6;border:3px solid rgba(0,0,0,.15)}
+.kid-name{font-size:1.7rem;font-weight:800;line-height:1.1}
+.kid-balance{margin-left:auto;font-size:2.1rem;font-weight:800;white-space:nowrap}
+.goal-sep{width:25%;margin:.9rem 0 .6rem auto;border:none;border-top:3px solid rgba(0,0,0,.25)}
+.goal-line{font-size:1.15rem}
+.goal-bar{height:16px;border:1px solid rgba(0,0,0,.4);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.7)}
+.goal-bar>div{height:100%;background:#2f9e5f}
+.flyout{border:2px dashed rgba(0,0,0,.25);border-radius:16px;padding:1rem 1.25rem;margin:0 0 1rem;background:rgba(255,255,255,.65)}
+.bubbles{display:flex;gap:.75rem;flex-wrap:wrap;margin:.5rem 0}
+.bubble{border-radius:999px;padding:.8rem 1.6rem;font-size:1.2rem;font-weight:700}
+.popover{border:2px solid #1d4e89;border-radius:16px;padding:1rem 1.25rem;margin:.75rem 0;background:#fff}
+.math-q{background:#fff6cc;border-radius:10px;padding:.75rem 1rem;font-size:1.2rem;font-weight:700}
+.swatches{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}
+.swatch{width:44px;height:44px;border-radius:50%;border:3px solid rgba(0,0,0,.2);cursor:pointer;padding:0}
+.swatch[aria-pressed="true"]{border-color:#1a2436;border-width:4px}
+.add-kid{margin:2rem 0 0;text-align:center}
+.add-kid summary{cursor:pointer;color:#5a6577;text-decoration:underline;font-size:1rem}
+.add-kid form{max-width:420px;margin:1rem auto;text-align:left}
+.muted{color:#5a6577}
 </style>
 </head>
 <body>
-<h1><a href="/">BanKin</a></h1>
-<p><small>Bank of Kinast — LAN-only family ledger. No PIN, no real money.</small></p>
+<header class="logo">
+<svg width="52" height="44" viewBox="0 0 52 44" aria-hidden="true"><path d="M26 2 L50 16 H2 Z" fill="#1d4e89"/><rect x="6" y="20" width="6" height="16" fill="#1d4e89"/><rect x="18" y="20" width="6" height="16" fill="#1d4e89"/><rect x="28" y="20" width="6" height="16" fill="#1d4e89"/><rect x="40" y="20" width="6" height="16" fill="#1d4e89"/><rect x="2" y="38" width="48" height="4" fill="#2f9e5f"/></svg>
+<div>
+<div class="logo-name">Ban<em>Kin</em></div>
+<div class="logo-sub">Bank of Kinast — LAN-only family ledger. No PIN, no real money.</div>
+</div>
+</header>
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% for category, message in messages %}
 <p class="flash-{{ category }}">{{ message }}</p>

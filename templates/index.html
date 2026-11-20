@@ -1,27 +1,123 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Kids</h2>
 {% if not rows %}
-<p>No kids yet. Add one below.</p>
+<p>No kids yet. Add one below to get started.</p>
 {% endif %}
 {% for row in rows %}
-<div class="card">
-  <a href="{{ url_for('kid_detail', kid_id=row.kid.id) }}"><strong>{{ row.kid.name }}</strong></a>
-  <div class="big">{{ format_cents(row.balance) }}</div>
+<article class="kid-card" style="background:{{ row.theme.bg }};border-color:{{ row.theme.border }}" onclick="toggleFlyout({{ row.kid.id }})" role="button" tabindex="0" onkeydown="if(event.key==='Enter'){toggleFlyout({{ row.kid.id }})}">
+  <div class="kid-top">
+    {% if row.kid.avatar_path %}
+    <img class="avatar" src="{{ url_for('avatar', kid_id=row.kid.id) }}" alt="{{ row.kid.name }}">
+    {% else %}
+    <span class="avatar-fallback" aria-hidden="true">{{ kid_initials(row.kid.name) }}</span>
+    {% endif %}
+    <span class="kid-name">{{ row.kid.name }}</span>
+    <span class="kid-balance" style="color:{{ row.theme.balance }}">{{ format_cents(row.balance) }}</span>
+  </div>
   {% if row.goal %}
-  <p>Goal: {{ row.goal.name }} — {{ format_cents(row.balance) }} of {{ format_cents(row.goal.price_cents) }} ({{ row.pct }}%)</p>
-  <div class="bar"><div style="width:{{ row.pct }}%"></div></div>
-  {% else %}
-  <p>No active goal.</p>
+  <hr class="goal-sep">
+  <div class="goal-line">Goal: {{ row.goal.name }} — {{ format_cents(row.balance) }} of {{ format_cents(row.goal.price_cents) }} ({{ row.pct }}%)</div>
+  <div class="goal-bar"><div style="width:{{ row.pct }}%"></div></div>
   {% endif %}
+</article>
+
+<div class="flyout" id="flyout-{{ row.kid.id }}" hidden>
+  <div class="bubbles">
+    <button type="button" class="bubble" onclick="openAction({{ row.kid.id }}, 'deposit')">Deposit</button>
+    <button type="button" class="bubble secondary" onclick="openAction({{ row.kid.id }}, 'withdraw')">Withdraw</button>
+  </div>
+
+  <div class="popover" id="popover-{{ row.kid.id }}-deposit" hidden>
+    <h3>Deposit for {{ row.kid.name }}</h3>
+    <form method="post" action="{{ url_for('deposit', kid_id=row.kid.id) }}">
+      <input type="hidden" name="from_home" value="1">
+      <input type="hidden" name="math_token" value="{{ row.deposit_challenge.token }}">
+      <label>Amount <input name="amount" inputmode="decimal" required></label>
+      <label>Source / giver <input name="source"></label>
+      <label>Note <input name="note"></label>
+      <p class="math-q">Parent check: {{ row.deposit_challenge.question }} <input name="math_answer" inputmode="numeric" required style="width:6rem;display:inline-block"></p>
+      <button type="submit">Deposit</button>
+      <button type="button" class="secondary" onclick="closeAction({{ row.kid.id }}, 'deposit')">Cancel</button>
+    </form>
+  </div>
+
+  <div class="popover" id="popover-{{ row.kid.id }}-withdraw" hidden>
+    <h3>Withdraw for {{ row.kid.name }}</h3>
+    <form method="post" action="{{ url_for('withdraw', kid_id=row.kid.id) }}">
+      <input type="hidden" name="from_home" value="1">
+      <input type="hidden" name="math_token" value="{{ row.withdraw_challenge.token }}">
+      <label>Amount <input name="amount" inputmode="decimal" required></label>
+      <label>Source / reason <input name="source"></label>
+      <label>Note <input name="note"></label>
+      <p class="math-q">Parent check: {{ row.withdraw_challenge.question }} <input name="math_answer" inputmode="numeric" required style="width:6rem;display:inline-block"></p>
+      <button type="submit">Withdraw</button>
+      <button type="button" class="secondary" onclick="closeAction({{ row.kid.id }}, 'withdraw')">Cancel</button>
+    </form>
+  </div>
+
+  <h3>Recent activity</h3>
+  {% if not row.txns %}<p class="muted">No transactions yet.</p>{% endif %}
+  <ul>
+  {% for t in row.txns %}
+    <li>{{ t.created_at }} — {{ t.kind }} {{ format_cents(t.amount_cents) if t.kind == 'deposit' else '-' + format_cents(t.amount_cents) }}{% if t.source %} ({{ t.source }}){% endif %}</li>
+  {% endfor %}
+  </ul>
+
+  <h3>Theme</h3>
+  <div class="swatches">
+  {% for name, t in themes.items() %}
+    <form method="post" action="{{ url_for('set_theme', kid_id=row.kid.id) }}" style="display:inline">
+      <input type="hidden" name="theme" value="{{ name }}">
+      <button type="submit" class="swatch" title="{{ t.label }}" aria-pressed="{{ 'true' if row.kid.theme == name else 'false' }}" style="background:{{ t.bg }};border-color:{{ t.border }}"></button>
+    </form>
+  {% endfor %}
+  </div>
+
+  <h3>Avatar</h3>
+  <form method="post" action="{{ url_for('set_avatar', kid_id=row.kid.id) }}" enctype="multipart/form-data">
+    <label>Photo <input type="file" name="avatar" accept="image/*"></label>
+    <button type="submit" class="secondary">Save avatar</button>
+  </form>
+
+  <p>
+    <a href="{{ url_for('kid_detail', kid_id=row.kid.id) }}">Goal, TV &amp; full history</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('tv_card_route', kid_id=row.kid.id) }}">TV card (240×240 JPEG)</a>
+  </p>
 </div>
 {% endfor %}
-<div class="card">
-<h3>Add a kid</h3>
+
+<details class="add-kid">
+<summary>Add a kid</summary>
 <form method="post" action="{{ url_for('add_kid') }}">
   <label>Name <input name="name" required></label>
   <label>TV address (optional, e.g. 192.168.2.50) <input name="tv_ip"></label>
   <button type="submit">Add kid</button>
 </form>
-</div>
+</details>
+
+<script>
+function toggleFlyout(id) {
+  var el = document.getElementById('flyout-' + id);
+  if (!el) return;
+  var wasHidden = el.hidden;
+  var all = document.querySelectorAll('.flyout');
+  for (var i = 0; i < all.length; i++) { all[i].hidden = true; }
+  el.hidden = !wasHidden;
+}
+function openAction(id, kind) {
+  var fly = document.getElementById('flyout-' + id);
+  if (fly) fly.hidden = false;
+  var dep = document.getElementById('popover-' + id + '-deposit');
+  var wit = document.getElementById('popover-' + id + '-withdraw');
+  if (dep) dep.hidden = true;
+  if (wit) wit.hidden = true;
+  var el = document.getElementById('popover-' + id + '-' + kind);
+  if (el) el.hidden = false;
+}
+function closeAction(id, kind) {
+  var el = document.getElementById('popover-' + id + '-' + kind);
+  if (el) el.hidden = true;
+}
+</script>
 {% endblock %}

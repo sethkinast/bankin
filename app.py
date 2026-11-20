@@ -11,8 +11,10 @@ Then open http://127.0.0.1:8080/
 """
 
 import io
+import json
 import logging
 import os
+import random
 import sqlite3
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -30,6 +32,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    session,
     url_for,
 )
 from PIL import Image, ImageDraw, ImageFont
@@ -79,6 +82,81 @@ def goal_progress_pct(balance_cents, price_cents):
     return min(100, balance_cents * 100 // price_cents)
 
 
+# ---------------------------------------------------------------- themes
+
+# Skylight-style pastels: harmonious card background, border, and
+# balance colour per theme. Plain dict, no CSS generation needed —
+# templates inline these three values on the card.
+THEMES = {
+    "sky": {"label": "Sky", "bg": "#e3f0ff", "border": "#8fb8e8", "balance": "#1d4e89"},
+    "mint": {"label": "Mint", "bg": "#dff5e6", "border": "#7fc9a0", "balance": "#14663a"},
+    "peach": {"label": "Peach", "bg": "#ffead9", "border": "#f0a878", "balance": "#8a3d12"},
+    "lilac": {"label": "Lilac", "bg": "#ece6fb", "border": "#a894e0", "balance": "#4b2e8f"},
+    "lemon": {"label": "Lemon", "bg": "#fff6cc", "border": "#e3c95a", "balance": "#6d5700"},
+    "rose": {"label": "Rose", "bg": "#ffe3ea", "border": "#e88aa5", "balance": "#7d1f3d"},
+}
+DEFAULT_THEME = "sky"
+
+
+def theme_for(kid):
+    name = (kid["theme"] if "theme" in kid.keys() else None) or DEFAULT_THEME
+    return THEMES.get(name, THEMES[DEFAULT_THEME])
+
+
+def kid_initials(name):
+    parts = (name or "").split()
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][0].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+# ---------------------------------------------------------------- math gate
+
+def new_math_challenge():
+    """One random simple math question, server-side verified.
+
+    Returns {"token": ..., "question": "23 + 47 = ?"}. The answer is
+    stored in the session under the one-time token and never sent to
+    the browser. Two-digit addition/subtraction: simple for an adult,
+    a speed bump for a little kid. Only money movement is gated —
+    viewing balances, goals, and history never needs a question.
+    """
+    a = random.randint(10, 50)
+    b = random.randint(10, 50)
+    op = random.choice(["+", "-"])
+    if op == "-" and b > a:
+        a, b = b, a
+    answer = a + b if op == "+" else a - b
+    token = uuid.uuid4().hex
+    challenges = session.get("math", {})
+    challenges[token] = answer
+    while len(challenges) > 20:
+        challenges.pop(next(iter(challenges)))
+    session["math"] = challenges
+    session.modified = True
+    return {"token": token, "question": f"{a} {op} {b} = ?"}
+
+
+def verify_math_challenge():
+    """Check the submitted one-time math answer. Consumes the token
+    whether the answer is right or wrong, so a challenge cannot be
+    replayed. Returns True only on a correct answer."""
+    token = (request.form.get("math_token") or "").strip()
+    raw = (request.form.get("math_answer") or "").strip()
+    challenges = session.get("math", {})
+    if token not in challenges:
+        return False
+    expected = challenges.pop(token)
+    session["math"] = challenges
+    session.modified = True
+    try:
+        return int(raw) == expected
+    except ValueError:
+        return False
+
+
 # ---------------------------------------------------------------- database
 
 def get_db(data_dir):
@@ -99,6 +177,8 @@ def init_db(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             tv_ip TEXT NOT NULL DEFAULT '',
+            avatar_path TEXT,
+            theme TEXT NOT NULL DEFAULT 'sky',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS transactions (
@@ -123,6 +203,13 @@ def init_db(conn):
         );
         """
     )
+    # Looks round 1 migration for databases created by v1: add the
+    # avatar and theme columns if they are not there yet.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(kids)")}
+    if "avatar_path" not in cols:
+        conn.execute("ALTER TABLE kids ADD COLUMN avatar_path TEXT")
+    if "theme" not in cols:
+        conn.execute("ALTER TABLE kids ADD COLUMN theme TEXT NOT NULL DEFAULT 'sky'")
     conn.commit()
 
 
@@ -309,13 +396,21 @@ def create_app(data_dir=None):
         for kid in kids:
             balance = get_balance(conn, kid["id"])
             goal = get_active_goal(conn, kid["id"])
+            txns = conn.execute(
+                "SELECT * FROM transactions WHERE kid_id = ? "
+                "ORDER BY id DESC LIMIT 5",
+                (kid["id"],)).fetchall()
             rows.append({
                 "kid": kid,
+                "theme": theme_for(kid),
                 "balance": balance,
                 "goal": goal,
                 "pct": goal_progress_pct(balance, goal["price_cents"]) if goal else None,
+                "txns": txns,
+                "deposit_challenge": new_math_challenge(),
+                "withdraw_challenge": new_math_challenge(),
             })
-        return render_template("index.html", rows=rows)
+        return render_template("index.html", rows=rows, themes=THEMES)
 
     @app.route("/kids", methods=["POST"])
     def add_kid():
@@ -344,9 +439,12 @@ def create_app(data_dir=None):
             "ORDER BY completed_at DESC",
             (kid_id,)).fetchall()
         return render_template(
-            "kid.html", kid=kid, balance=balance, goal=goal,
+            "kid.html", kid=kid, theme=theme_for(kid), themes=THEMES,
+            balance=balance, goal=goal,
             pct=goal_progress_pct(balance, goal["price_cents"]) if goal else None,
             txns=txns, archived=archived,
+            deposit_challenge=new_math_challenge(),
+            withdraw_challenge=new_math_challenge(),
             format_cents=format_cents)
 
     @app.route("/kid/<int:kid_id>/tv-ip", methods=["POST"])
@@ -359,38 +457,100 @@ def create_app(data_dir=None):
         flash("TV address saved.", "ok")
         return redirect(url_for("kid_detail", kid_id=kid_id))
 
+    def _money_redirect(kid_id):
+        # Flyout/popover submissions on the home screen stay on home;
+        # kid-page submissions stay on the kid page.
+        if request.form.get("from_home") == "1":
+            return redirect(url_for("index"))
+        return redirect(url_for("kid_detail", kid_id=kid_id))
+
     @app.route("/kid/<int:kid_id>/deposit", methods=["POST"])
     def deposit(kid_id):
         conn = db()
         kid = get_kid_or_404(conn, kid_id)
+        if not verify_math_challenge():
+            flash("That math answer wasn't right — try a new question.", "warn")
+            return _money_redirect(kid_id)
         try:
             cents = parse_amount_to_cents(request.form.get("amount"))
         except ValueError as exc:
             flash(str(exc), "warn")
-            return redirect(url_for("kid_detail", kid_id=kid_id))
+            return _money_redirect(kid_id)
         add_transaction(conn, kid_id, "deposit", cents,
                         request.form.get("source"), request.form.get("note"))
         flash(f"Deposited {format_cents(cents)}.", "ok")
         push_for_kid(kid)
-        return redirect(url_for("kid_detail", kid_id=kid_id))
+        return _money_redirect(kid_id)
 
     @app.route("/kid/<int:kid_id>/withdraw", methods=["POST"])
     def withdraw(kid_id):
         conn = db()
         kid = get_kid_or_404(conn, kid_id)
+        if not verify_math_challenge():
+            flash("That math answer wasn't right — try a new question.", "warn")
+            return _money_redirect(kid_id)
         try:
             cents = parse_amount_to_cents(request.form.get("amount"))
         except ValueError as exc:
             flash(str(exc), "warn")
-            return redirect(url_for("kid_detail", kid_id=kid_id))
+            return _money_redirect(kid_id)
         if cents > get_balance(conn, kid_id):
             flash("Not enough in the account for that withdrawal.", "warn")
-            return redirect(url_for("kid_detail", kid_id=kid_id))
+            return _money_redirect(kid_id)
         add_transaction(conn, kid_id, "withdrawal", cents,
                         request.form.get("source"), request.form.get("note"))
         flash(f"Withdrew {format_cents(cents)}.", "ok")
         push_for_kid(kid)
-        return redirect(url_for("kid_detail", kid_id=kid_id))
+        return _money_redirect(kid_id)
+
+    @app.route("/kid/<int:kid_id>/avatar", methods=["POST"])
+    def set_avatar(kid_id):
+        conn = db()
+        kid = get_kid_or_404(conn, kid_id)
+        upload = request.files.get("avatar")
+        if not upload or not upload.filename:
+            flash("Choose a photo first.", "warn")
+            return redirect(url_for("index"))
+        ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+        if ext not in ALLOWED_PICTURE_EXTS:
+            flash("Avatar must be a jpg, png, gif or webp.", "warn")
+            return redirect(url_for("index"))
+        if kid["avatar_path"]:
+            try:
+                os.remove(os.path.join(app.config["DATA_DIR"], kid["avatar_path"]))
+            except OSError:
+                pass
+        fname = f"{kid_id}_avatar_{uuid.uuid4().hex}.{ext}"
+        rel = os.path.join("pictures", fname)
+        upload.save(os.path.join(app.config["DATA_DIR"], rel))
+        conn.execute("UPDATE kids SET avatar_path = ? WHERE id = ?", (rel, kid_id))
+        conn.commit()
+        flash("Avatar saved.", "ok")
+        return redirect(url_for("index"))
+
+    @app.route("/kid/<int:kid_id>/theme", methods=["POST"])
+    def set_theme(kid_id):
+        conn = db()
+        get_kid_or_404(conn, kid_id)
+        theme = (request.form.get("theme") or "").strip()
+        if theme not in THEMES:
+            flash("Unknown theme.", "warn")
+            return redirect(url_for("index"))
+        conn.execute("UPDATE kids SET theme = ? WHERE id = ?", (theme, kid_id))
+        conn.commit()
+        flash(f"Theme set to {THEMES[theme]['label']}.", "ok")
+        return redirect(url_for("index"))
+
+    @app.route("/avatar/<int:kid_id>")
+    def avatar(kid_id):
+        conn = db()
+        kid = get_kid_or_404(conn, kid_id)
+        if not kid["avatar_path"]:
+            abort(404)
+        path = os.path.join(app.config["DATA_DIR"], kid["avatar_path"])
+        if not os.path.isfile(path):
+            abort(404)
+        return send_file(path)
 
     @app.route("/kid/<int:kid_id>/goal", methods=["POST"])
     def save_goal(kid_id):
@@ -499,6 +659,7 @@ def create_app(data_dir=None):
         return send_file(path)
 
     app.jinja_env.globals["format_cents"] = format_cents
+    app.jinja_env.globals["kid_initials"] = kid_initials
     return app
 
 
